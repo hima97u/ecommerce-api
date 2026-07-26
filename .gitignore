@@ -1,1 +1,83 @@
 ecommerceEnv
+
+# ==========================
+# Python
+# ==========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ==========================
+# Virtual Environment
+# ==========================
+venv/
+env/
+ENV/
+.venv/
+ecommerceEnv/
+
+# ==========================
+# Django
+# ==========================
+db.sqlite3
+db.sqlite3-journal
+
+# Media uploads
+media/
+
+# Collected static files
+staticfiles/
+
+# ==========================
+# Environment Variables
+# ==========================
+.env
+.env.*
+
+# ==========================
+# VS Code
+# ==========================
+.vscode/
+
+# ==========================
+# PyCharm
+# ==========================
+.idea/
+
+# ==========================
+# macOS
+# ==========================
+.DS_Store
+
+# ==========================
+# Windows
+# ==========================
+Thumbs.db
+Desktop.ini
+
+# ==========================
+# Logs
+# ==========================
+*.log
+
+# ==========================
+# Coverage & Testing
+# ==========================
+.coverage
+.pytest_cache/
+htmlcov/
+
+# ==========================
+# Build files
+# ==========================
+build/
+dist/
+*.egg-info/
+
+# ==========================
+# Migrations (Keep these commented)
+# Uncomment ONLY if you don't want migrations in Git
+# ==========================
+# */migrations/*
+# !*/migrations/__init__.py
