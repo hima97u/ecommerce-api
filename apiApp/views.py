@@ -29,3 +29,8 @@ def category_detail(request,slug):
     category = Category.objects.filter(slug=slug)
     serializer = CategoryDetailSerialzer(category,many=True)
     return Response(serializer.data)
+
+
+@api_view(['POST'])
+def add_to_cart(request):
+    
