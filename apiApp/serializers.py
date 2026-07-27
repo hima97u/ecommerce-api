@@ -29,8 +29,9 @@ class CartItemSerializer(serializers.ModelSerializer):
         model = CartItem
         fields = ["id","product","quantity","sub_total"]
 
-    def get_sub_total(self,cartitem):
-        total = cartitem.product.price * cartitem.quantity
+    def get_sub_total(self,cartitems):
+        total = cartitems.product.price * cartitems.quantity
+        return total
 
 
 class CartSerializer(serializers.ModelSerializer):
