@@ -111,3 +111,16 @@ class ProductRating(models.Model):
 
     def __str__(self):
         return f"{self.product.name} - {self.average_rating} ({self.total_reviews} reviews)"
+
+
+
+class Wishlist(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="wishlists")
+    product = models.ForeignKey(Products, on_delete=models.CASCADE, related_name="wishlist")
+    created = models.DateTimeField(auto_now_add=True) 
+
+    class Meta:
+        unique_together = ["user", "product"]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.product.name}"

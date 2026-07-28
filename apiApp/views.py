@@ -1,8 +1,9 @@
 from django.shortcuts import render
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
-from .models import Cart, CartItem, Products,Category, Review
-from .serializers import CartItemSerializer, CartSerializer, ProductListSerializer,ProductDetailSerializer,CategoryListSerialzer,CategoryDetailSerialzer, ReviewSerializer
+from django.db.models import Q
+from .models import Cart, CartItem, Products,Category, Review, Wishlist
+from .serializers import CartItemSerializer, CartSerializer, ProductListSerializer,ProductDetailSerializer,CategoryListSerialzer,CategoryDetailSerialzer, ReviewSerializer, WishlistSerializer
 from django.contrib.auth import get_user_model
 # Create your views here.
 
@@ -100,3 +101,42 @@ def delete_review(request, pk):
 
     return Response("Review deleted successfully!", status=204)
 
+
+@api_view(['POST'])
+def add_to_wishlist(request):
+    email = request.data.get("email")
+    product_id = request.data.get("product_id")
+
+    user = User.objects.get(email=email)
+    product = Products.objects.get(id=product_id) 
+
+    wishlist = Wishlist.objects.filter(user=user, product=product)
+    if wishlist:
+        wishlist.delete()
+
+        return Response("Wishlist deleted successfully!", status=204)
+
+    new_wishlist = Wishlist.objects.create(user=user, product=product)
+    serializer = WishlistSerializer(new_wishlist)
+    return Response(serializer.data)
+
+
+@api_view(['DELETE'])
+def delete_cart_item(request, pk):
+    cartitem = CartItem.objects.get(id=pk) 
+    cartitem.delete()
+
+    return Response("cartitem deleted successfully!", status=204)
+
+
+@api_view(['GET'])
+def product_search(request):
+    query = request.query_params.get("query") 
+    if not query:
+        return Response("No query provided", status=400)
+    
+    products = Products.objects.filter(Q(name__icontains=query) | 
+                                      Q(description__icontains=query) |
+                                       Q(Category__name__icontains=query) )
+    serializer = ProductListSerializer(products, many=True)
+    return Response(serializer.data)
