@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import Cart, CartItem, CustomUser,Products,Category
+from .models import Cart, CartItem, CustomUser, ProductRating,Products,Category, Review
 # Register your models here.
 
 class CustomUserAdmin(UserAdmin):
@@ -16,4 +16,4 @@ class CategoryAdmin(admin.ModelAdmin):
 admin.site.register(Category,CategoryAdmin)
 
 
-admin.site.register([Cart,CartItem])
+admin.site.register([Cart,CartItem,Review,ProductRating])

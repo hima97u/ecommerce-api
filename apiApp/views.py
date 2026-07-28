@@ -1,10 +1,12 @@
 from django.shortcuts import render
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
-from .models import Cart, CartItem, Products,Category
-from .serializers import CartItemSerializer, CartSerializer, ProductListSerializer,ProductDetailSerializer,CategoryListSerialzer,CategoryDetailSerialzer
+from .models import Cart, CartItem, Products,Category, Review
+from .serializers import CartItemSerializer, CartSerializer, ProductListSerializer,ProductDetailSerializer,CategoryListSerialzer,CategoryDetailSerialzer, ReviewSerializer
+from django.contrib.auth import get_user_model
 # Create your views here.
 
+User = get_user_model()
 
 @api_view(['GET'])
 def product_list(request):
@@ -62,5 +64,39 @@ def update_cartitem_quantity(request):
     return Response({"data":serializer.data , "message":"cartitem updated successfully !! "})
     
 
+@api_view(['POST'])
+def add_review(request):
+    product_id = request.data.get("product_id")
+    email = request.data.get("email")
+    rating = request.data.get("rating")
+    review_text = request.data.get("review")
 
+    product = Products.objects.get(id=product_id)
+    user = User.objects.get(email=email)
+
+    if Review.objects.filter(product=product,user=user).exists():
+        return Response("you already dropped a review for this project",status=400)
+
+    review = Review.objects.create(product=product,user=user,rating=rating,review=review_text)
+    serializer = ReviewSerializer(review)
+    return Response(serializer.data)
+
+@api_view(['PUT'])
+def update_review(request,pk):
+    review = Review.objects.get(id=pk)
+    rating = request.data.get("rating")
+    review_text = request.data.get("review")
+
+    review.rating = rating
+    review.review = review_text
+    review.save()
+    serializer = ReviewSerializer(review)
+    return Response(serializer.data)
+
+@api_view(['DELETE'])
+def delete_review(request, pk):
+    review = Review.objects.get(id=pk) 
+    review.delete()
+
+    return Response("Review deleted successfully!", status=204)
 
