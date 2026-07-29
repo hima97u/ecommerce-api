@@ -1,3 +1,5 @@
+import stripe
+from django.conf import settings
 from django.shortcuts import render
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
@@ -7,6 +9,7 @@ from .serializers import CartItemSerializer, CartSerializer, ProductListSerializ
 from django.contrib.auth import get_user_model
 # Create your views here.
 
+stripe.api_key = settings.STRIPE_SECRET_KEY
 User = get_user_model()
 
 @api_view(['GET'])
@@ -140,3 +143,46 @@ def product_search(request):
                                        Q(Category__name__icontains=query) )
     serializer = ProductListSerializer(products, many=True)
     return Response(serializer.data)
+
+@api_view(['POST'])
+def create_checkout_session(request):
+    cart_code = request.data.get("cart_code")
+    email = request.data.get("email")
+    cart = Cart.objects.get(cart_code=cart_code)
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            customer_email= email,
+            payment_method_types=['card'],
+
+
+            line_items=[
+                {
+                    'price_data': {
+                        'currency': 'usd',
+                        'product_data': {'name': item.product.name},
+                        'unit_amount': int(item.product.price * 100),  # Amount in cents
+                    },
+                    'quantity': item.quantity,
+                }
+                for item in cart.cartitems.all()
+            ] + [
+                {
+                    'price_data': {
+                        'currency': 'usd',
+                        'product_data': {'name': 'VAT Fee'},
+                        'unit_amount': 500,  # $5 in cents
+                    },
+                    'quantity': 1,
+                }
+            ],
+
+
+           
+            mode='payment',
+            success_url="http://localhost:3000/success",
+            cancel_url="http://localhost:3000/cancel",
+            metadata = {"cart_code": cart_code}
+        )
+        return Response({'data': {'session_id': checkout_session.id, 'url': checkout_session.url}})
+    except Exception as e:
+        return Response({'error': str(e)}, status=400)
