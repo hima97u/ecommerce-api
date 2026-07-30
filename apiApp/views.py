@@ -12,7 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 # Create your views here.
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
-endpoint_secret = 'whsec_...'
+endpoint_secret = settings.WEBHOOK_SECRET
 User = get_user_model()
 
 @api_view(['GET'])
@@ -223,22 +223,25 @@ def my_webhook_view(request):
 
 
 def fulfill_checkout(session, cart_code):
-    
-    order = Order.objects.create(stripe_checkout_id=session["id"],
-        amount=session["amount_total"],
-        currency=session["currency"],
-        customer_email=session["customer_email"],
-        status="Paid")
-    
+    try:
+        order = Order.objects.create(
+            stripe_checkout_id=session["id"],
+            amount=session["amount_total"],
+            currency=session["currency"],
+            customer_email=session["customer_email"],
+            status="Paid",
+        )
 
-    print(session)
+        cart = Cart.objects.get(cart_code=cart_code)
 
+        for item in cart.cartitems.all():
+            OrderItem.objects.create(
+                order=order,
+                product=item.product,
+                quantity=item.quantity,
+            )
 
-    cart = Cart.objects.get(cart_code=cart_code)
-    cartitems = cart.cartitems.all()
+        cart.delete()
 
-    for item in cartitems:
-        orderitem = OrderItem.objects.create(order=order, product=item.product, 
-                                             quantity=item.quantity)
-    
-    cart.delete()
+    except Exception as e:
+        print("ERROR:", e)
