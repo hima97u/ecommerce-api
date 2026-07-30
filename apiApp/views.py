@@ -1,8 +1,11 @@
 import stripe
+import logging
+from decimal import Decimal
 from django.conf import settings
 from django.shortcuts import render
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
+from django.db import transaction
 from django.db.models import Q
 from .models import Cart, CartItem, Order, OrderItem, Products,Category, Review, Wishlist
 from .serializers import CartItemSerializer, CartSerializer, ProductListSerializer,ProductDetailSerializer,CategoryListSerialzer,CategoryDetailSerialzer, ReviewSerializer, WishlistSerializer
@@ -14,6 +17,7 @@ from django.views.decorators.csrf import csrf_exempt
 stripe.api_key = settings.STRIPE_SECRET_KEY
 endpoint_secret = settings.WEBHOOK_SECRET
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 @api_view(['GET'])
 def product_list(request):
@@ -182,13 +186,18 @@ def create_checkout_session(request):
 
            
             mode='payment',
-            success_url="http://localhost:3000/success",
-            cancel_url="http://localhost:3000/cancel",
+            # success_url="http://localhost:3000/success",
+            # cancel_url="http://localhost:3000/cancel",
+
+            success_url="https://next-shop-self.vercel.app/success",
+            cancel_url="https://next-shop-self.vercel.app/failed",
             metadata = {"cart_code": cart_code}
         )
-        return Response({'data': {'session_id': checkout_session.id, 'url': checkout_session.url}})
+        return Response({'data': checkout_session.to_dict()})
     except Exception as e:
         return Response({'error': str(e)}, status=400)
+
+
 
 
 @csrf_exempt
@@ -223,25 +232,22 @@ def my_webhook_view(request):
 
 
 def fulfill_checkout(session, cart_code):
-    try:
-        order = Order.objects.create(
-            stripe_checkout_id=session["id"],
-            amount=session["amount_total"],
-            currency=session["currency"],
-            customer_email=session["customer_email"],
-            status="Paid",
-        )
+    
+    order = Order.objects.create(stripe_checkout_id=session["id"],
+        amount=session["amount_total"],
+        currency=session["currency"],
+        customer_email=session["customer_email"],
+        status="Paid")
+    
 
-        cart = Cart.objects.get(cart_code=cart_code)
+    print(session)
 
-        for item in cart.cartitems.all():
-            OrderItem.objects.create(
-                order=order,
-                product=item.product,
-                quantity=item.quantity,
-            )
 
-        cart.delete()
+    cart = Cart.objects.get(cart_code=cart_code)
+    cartitems = cart.cartitems.all()
 
-    except Exception as e:
-        print("ERROR:", e)
+    for item in cartitems:
+        orderitem = OrderItem.objects.create(order=order, product=item.product, 
+                                             quantity=item.quantity)
+    
+    cart.delete()
