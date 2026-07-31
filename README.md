@@ -432,6 +432,6 @@ This project is licensed under the MIT License.
 
 ## Author
 
-**GitHub:** [your-github-username](https://github.com/hima97u)
+**GitHub:** [GitHub](https://github.com/hima97u)
 
-**LinkedIn:** [your-linkedin-profile](https://linkedin.com/in/hima97u)
+**LinkedIn:** [Linkedin](https://linkedin.com/in/hima97u)
