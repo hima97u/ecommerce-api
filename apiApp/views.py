@@ -202,32 +202,37 @@ def create_checkout_session(request):
 
 @csrf_exempt
 def my_webhook_view(request):
-  payload = request.body
-  sig_header = request.META['HTTP_STRIPE_SIGNATURE']
-  event = None
+    if request.method != "POST":
+        return HttpResponse("Webhook endpoint", status=405)
 
-  try:
-    event = stripe.Webhook.construct_event(
-      payload, sig_header, endpoint_secret
-    )
-  except ValueError as e:
-    # Invalid payload
-    return HttpResponse(status=400)
-  except stripe.error.SignatureVerificationError as e:
-    # Invalid signature
-    return HttpResponse(status=400)
+    sig_header = request.META.get("HTTP_STRIPE_SIGNATURE")
+    if not sig_header:
+        return HttpResponse("Missing Stripe signature", status=400)
 
-  if (
+    payload = request.body
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload,
+            sig_header,
+            endpoint_secret
+        )
+    except ValueError:
+        return HttpResponse(status=400)
+    except stripe.error.SignatureVerificationError:
+        return HttpResponse(status=400)
+
+    if (
     event['type'] == 'checkout.session.completed'
     or event['type'] == 'checkout.session.async_payment_succeeded'
   ):
-    session = event['data']['object']
-    cart_code = session.get("metadata", {}).get("cart_code")
+        session = event['data']['object']
+        cart_code = session["metadata"]["cart_code"]
 
-    fulfill_checkout(session, cart_code)
+        fulfill_checkout(session, cart_code)
 
 
-  return HttpResponse(status=200)
+        return HttpResponse(status=200)
 
 
 
