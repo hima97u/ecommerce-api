@@ -1,8 +1,31 @@
-from django.db.models.signals import post_save, post_delete 
+from django.core.cache import cache
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.db.models import Avg
 
-from apiApp.models import ProductRating, Review
+from apiApp.models import Category, ProductRating, Products, Review
+
+
+def invalidate_catalog_cache(instance):
+    keys = [
+        "products:list",
+        "categories:list",
+        f"product:{instance.pk}",
+        f"product:{getattr(instance, 'slug', '')}",
+        f"category:{instance.pk}",
+        f"category:{getattr(instance, 'slug', '')}",
+    ]
+    cache.delete_many([key for key in keys if not key.endswith(":")])
+
+
+@receiver([post_save, post_delete], sender=Products)
+def invalidate_product_cache(sender, instance, **kwargs):
+    invalidate_catalog_cache(instance)
+
+
+@receiver([post_save, post_delete], sender=Category)
+def invalidate_category_cache(sender, instance, **kwargs):
+    invalidate_catalog_cache(instance)
 
 
 
