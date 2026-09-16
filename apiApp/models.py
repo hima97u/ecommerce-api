@@ -63,6 +63,7 @@ class Products(models.Model):
 
 class Cart(models.Model):
     cart_code = models.CharField(max_length=15)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="carts", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -128,6 +129,7 @@ class Wishlist(models.Model):
 
 class Order(models.Model):
     stripe_checkout_id = models.CharField(max_length=255, unique=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name="orders", null=True, blank=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     currency = models.CharField(max_length=10)
     customer_email = models.EmailField()

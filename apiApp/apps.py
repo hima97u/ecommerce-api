@@ -6,5 +6,6 @@ class ApiappConfig(AppConfig):
 
     def ready(self):
         import apiApp.signals
+        import apiApp.tasks
 
   
