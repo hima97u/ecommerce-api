@@ -2,9 +2,11 @@ import stripe
 import logging
 from decimal import Decimal
 from django.conf import settings
-from django.shortcuts import render
+from django.core.cache import cache
+from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from django.db.models import Q
 from .models import Cart, CartItem, Order, OrderItem, Products,Category, Review, Wishlist
@@ -12,6 +14,7 @@ from .serializers import CartItemSerializer, CartSerializer, ProductListSerializ
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
+from .tasks import send_order_confirmation_email
 # Create your views here.
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -21,36 +24,67 @@ logger = logging.getLogger(__name__)
 
 @api_view(['GET'])
 def product_list(request):
+    cached = cache.get("products:list")
+    if cached is not None:
+        return Response(cached)
     products = Products.objects.filter(featured=True)
     serializer = ProductListSerializer(products,many=True)
+    cache.set("products:list", serializer.data, 300)
     return Response(serializer.data)
 
 @api_view(['GET'])
 def product_detail(request,slug):
-    product = Products.objects.get(slug=slug)
+    cache_key = f"product:{slug}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return Response(cached)
+    product = get_object_or_404(Products, slug=slug)
     serializer = ProductDetailSerializer(product)
+    cache.set(cache_key, serializer.data, 300)
     return Response(serializer.data)
 
 @api_view(['GET'])
 def category_list(request):
+    cached = cache.get("categories:list")
+    if cached is not None:
+        return Response(cached)
     categories = Category.objects.all()
     serialzer = CategoryListSerialzer(categories,many=True)
+    cache.set("categories:list", serialzer.data, 300)
     return Response(serialzer.data)
 
 @api_view(['GET'])
 def category_detail(request,slug):
-    category = Category.objects.filter(slug=slug)
-    serializer = CategoryDetailSerialzer(category,many=True)
+    cache_key = f"category:{slug}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return Response(cached)
+    category = get_object_or_404(Category, slug=slug)
+    serializer = CategoryDetailSerialzer([category], many=True)
+    cache.set(cache_key, serializer.data, 300)
     return Response(serializer.data)
 
 
+@api_view(['GET'])
+def health_check(request):
+    return Response({"status": "healthy"})
+
+
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def add_to_cart(request):
     cart_code = request.data.get("cart_code")
     product_id = request.data.get("product_id")
 
-    cart, created = Cart.objects.get_or_create(cart_code=cart_code)
-    product = Products.objects.get(id=product_id)
+    cart = Cart.objects.filter(cart_code=cart_code).first()
+    if cart and cart.user_id not in (None, request.user.id):
+        return Response({"detail": "This cart belongs to another user."}, status=403)
+    if cart is None:
+        cart = Cart.objects.create(cart_code=cart_code, user=request.user)
+    elif cart.user_id is None:
+        cart.user = request.user
+        cart.save(update_fields=["user"])
+    product = get_object_or_404(Products, id=product_id)
 
     cartitem, created = CartItem.objects.get_or_create(product=product, cart=cart)
     cartitem.quantity = 1 
@@ -61,13 +95,14 @@ def add_to_cart(request):
 
 
 @api_view(['PUT'])
+@permission_classes([IsAuthenticated])
 def update_cartitem_quantity(request):
     cartitem_id = request.data.get("item_id")
     quantity = request.data.get("quantity")
 
     quantity = int(quantity)
     
-    cartitem = CartItem.objects.get(id=cartitem_id)
+    cartitem = get_object_or_404(CartItem, id=cartitem_id, cart__user=request.user)
     cartitem.quantity = quantity
     cartitem.save()
 
@@ -76,14 +111,14 @@ def update_cartitem_quantity(request):
     
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def add_review(request):
     product_id = request.data.get("product_id")
-    email = request.data.get("email")
     rating = request.data.get("rating")
     review_text = request.data.get("review")
 
-    product = Products.objects.get(id=product_id)
-    user = User.objects.get(email=email)
+    product = get_object_or_404(Products, id=product_id)
+    user = request.user
 
     if Review.objects.filter(product=product,user=user).exists():
         return Response("you already dropped a review for this project",status=400)
@@ -93,8 +128,9 @@ def add_review(request):
     return Response(serializer.data)
 
 @api_view(['PUT'])
+@permission_classes([IsAuthenticated])
 def update_review(request,pk):
-    review = Review.objects.get(id=pk)
+    review = get_object_or_404(Review, id=pk, user=request.user)
     rating = request.data.get("rating")
     review_text = request.data.get("review")
 
@@ -105,20 +141,21 @@ def update_review(request,pk):
     return Response(serializer.data)
 
 @api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
 def delete_review(request, pk):
-    review = Review.objects.get(id=pk) 
+    review = get_object_or_404(Review, id=pk, user=request.user)
     review.delete()
 
     return Response("Review deleted successfully!", status=204)
 
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def add_to_wishlist(request):
-    email = request.data.get("email")
     product_id = request.data.get("product_id")
 
-    user = User.objects.get(email=email)
-    product = Products.objects.get(id=product_id) 
+    user = request.user
+    product = get_object_or_404(Products, id=product_id)
 
     wishlist = Wishlist.objects.filter(user=user, product=product)
     if wishlist:
@@ -132,8 +169,9 @@ def add_to_wishlist(request):
 
 
 @api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
 def delete_cart_item(request, pk):
-    cartitem = CartItem.objects.get(id=pk) 
+    cartitem = get_object_or_404(CartItem, id=pk, cart__user=request.user)
     cartitem.delete()
 
     return Response("cartitem deleted successfully!", status=204)
@@ -152,10 +190,11 @@ def product_search(request):
     return Response(serializer.data)
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def create_checkout_session(request):
     cart_code = request.data.get("cart_code")
-    email = request.data.get("email")
-    cart = Cart.objects.get(cart_code=cart_code)
+    cart = get_object_or_404(Cart, cart_code=cart_code, user=request.user)
+    email = request.user.email
     try:
         checkout_session = stripe.checkout.Session.create(
             customer_email= email,
@@ -237,18 +276,19 @@ def my_webhook_view(request):
 
 
 def fulfill_checkout(session, cart_code):
-    
-    order = Order.objects.create(stripe_checkout_id=session["id"],
+    order = Order.objects.filter(stripe_checkout_id=session["id"]).first()
+    if order:
+        return order
+
+    cart = Cart.objects.select_related("user").get(cart_code=cart_code)
+    order = Order.objects.create(
+        user=cart.user,
+        stripe_checkout_id=session["id"],
         amount=session["amount_total"],
         currency=session["currency"],
         customer_email=session["customer_email"],
-        status="Paid")
-    
-
-    print(session)
-
-
-    cart = Cart.objects.get(cart_code=cart_code)
+        status="Paid",
+    )
     cartitems = cart.cartitems.all()
 
     for item in cartitems:
@@ -256,3 +296,22 @@ def fulfill_checkout(session, cart_code):
                                              quantity=item.quantity)
     
     cart.delete()
+    send_order_confirmation_email.delay(order.pk)
+    return order
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def order_list(request):
+    orders = Order.objects.filter(user=request.user).prefetch_related("items")
+    return Response([
+        {
+            "id": order.id,
+            "stripe_checkout_id": order.stripe_checkout_id,
+            "amount": order.amount,
+            "currency": order.currency,
+            "status": order.status,
+            "created_at": order.created_at,
+        }
+        for order in orders
+    ])
