@@ -2,7 +2,7 @@
 
 # Ecommerce API
 
-_A production-minded RESTful ecommerce backend built with Django REST Framework, Stripe Checkout, and a clean relational data model._
+_A local-development RESTful ecommerce backend built with Django REST Framework, Stripe Checkout, and a clean relational data model._
 
 <p>
   <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
@@ -41,7 +41,7 @@ _A production-minded RESTful ecommerce backend built with Django REST Framework,
 - [Error Responses](#error-responses)
 - [Security](#security)
 - [Screenshots](#screenshots)
-- [Deployment](#deployment)
+- [Local Docker Setup](#local-docker-setup)
 - [Future Improvements](#future-improvements)
 - [Contributing](#contributing)
 - [License](#license)
@@ -51,14 +51,14 @@ _A production-minded RESTful ecommerce backend built with Django REST Framework,
 
 Ecommerce API is a RESTful backend for a modern online store. It is built with Django REST Framework and focuses on core ecommerce workflows: product and category browsing, cart management, order creation, wishlist support, product reviews and ratings, and secure Stripe Checkout payment processing with webhook confirmation.
 
-The codebase is intentionally structured around production-ready backend concerns: a custom user model, relational data integrity, serializer-driven API responses, media handling, and payment verification through Stripe webhooks.
+The local development stack uses Docker Compose with Django's development server behind Nginx, PostgreSQL for persistence, Redis for public catalog caching and Celery broker traffic, and Celery Beat for periodic jobs. Secrets are supplied through environment variables.
 
-Note: the repository currently ships with SQLite for local development, while PostgreSQL is the recommended production database.
+This project is for local development and testing only. It does not include production deployment infrastructure.
 
 ## Features
 
-- ✓ Custom user model with JWT-ready authentication architecture
-- ✓ User registration and login-ready backend foundation
+- ✓ Custom user model with JWT authentication
+- ✓ Role-based authorization through authenticated users and staff administrators
 - ✓ Product CRUD and detailed product views
 - ✓ Category CRUD and category-based browsing
 - ✓ Product search across names, descriptions, and categories
@@ -71,6 +71,10 @@ Note: the repository currently ships with SQLite for local development, while Po
 - ✓ Pagination-ready REST architecture
 - ✓ Validation-focused API design
 - ✓ Admin panel for internal management
+- ✓ Redis caching for public product and category reads
+- ✓ Celery worker and Celery Beat for background and scheduled jobs
+- ✓ Local Docker Compose setup with PostgreSQL, Redis, and Nginx
+- ✓ Application and container health checks
 - ✓ Secure, serializer-driven request and response handling
 
 ## Tech Stack
@@ -80,12 +84,13 @@ Note: the repository currently ships with SQLite for local development, while Po
 | Language | Python |
 | Framework | Django |
 | API Layer | Django REST Framework |
-| Database | PostgreSQL |
+| Database | PostgreSQL (Docker) |
 | Payments | Stripe Checkout + Webhooks |
-| Authentication | JWT / Simple JWT friendly architecture |
-| Application Server | Gunicorn |
-| Reverse Proxy | Nginx |
-| Async / Cache Ready | Redis, Celery (optional) |
+| Authentication | Django REST Framework Simple JWT |
+| Application Server | Django development server (`runserver`) |
+| Reverse Proxy | Nginx (local Docker proxy) |
+| Cache / Broker | Redis |
+| Background Jobs | Celery Worker and Celery Beat |
 | Local Media | Django media files |
 | Env Management | python-dotenv |
 
@@ -95,14 +100,16 @@ The API follows a standard request pipeline:
 
 ```mermaid
 flowchart TD
-    A[Client] --> B[Django URLs]
-    B --> C[Views]
-    C --> D[Serializers]
-    D --> E[Models]
-    E --> F[(PostgreSQL)]
+  A[Browser or API Client] --> B[Nginx]
+  B --> C[Django runserver :8000]
+  C --> D[Views and Serializers]
+  D --> E[(PostgreSQL)]
+  C --> F[(Redis Cache)]
+  F --> G[Celery Worker]
+  G --> H[Celery Beat Jobs]
 ```
 
-Each incoming request is routed through Django URLs, handled by function-based DRF views, validated and shaped by serializers, persisted through Django models, and stored in the database.
+Nginx is the local entry point and proxies requests to Django's development server. Django uses PostgreSQL for application data and Redis for public catalog caching and Celery broker traffic. User-specific data is not globally cached.
 
 ### Stripe payment flow
 
@@ -148,6 +155,12 @@ ecommerce_api/
 ├── db.sqlite3
 ├── requirements.txt
 ├── README.md
+├── Dockerfile
+├── docker-compose.yml
+├── .dockerignore
+├── .env.example
+├── nginx/
+│   └── nginx.conf
 ├── apiApp/
 │   ├── admin.py
 │   ├── models.py
@@ -174,7 +187,36 @@ git clone https://github.com/OWNER/REPO.git
 cd REPO
 ```
 
-### 2. Create a virtual environment
+### Docker Compose (recommended)
+
+Copy the example environment file and set local values:
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+The primary local URL is `http://localhost/` through Nginx. Django is also published at `http://localhost:8000/` for debugging.
+
+Run migrations and create an administrator:
+
+```bash
+docker compose exec django python manage.py migrate
+docker compose exec django python manage.py createsuperuser
+```
+
+Inspect background-job logs:
+
+```bash
+docker compose logs -f celery_worker
+docker compose logs -f celery_beat
+```
+
+Stop the stack with `docker compose down`.
+
+### Running without Docker
+
+Create a virtual environment:
 
 ```bash
 python -m venv ecommerceEnv
@@ -231,10 +273,20 @@ The API will be available at `http://127.0.0.1:8000/`.
 | --- | --- | --- |
 | `SECRET_KEY` | Django secret key | `django-insecure-...` |
 | `DEBUG` | Enable debug mode | `True` |
-| `DATABASE_URL` | PostgreSQL database URL | `postgres://user:pass@localhost:5432/ecommerce` |
+| `POSTGRES_DB` | PostgreSQL database name | `ecommerce` |
+| `POSTGRES_USER` | PostgreSQL username | `ecommerce` |
+| `POSTGRES_PASSWORD` | PostgreSQL password | `change-me-locally` |
+| `POSTGRES_HOST` | PostgreSQL Compose service name | `postgres` |
+| `POSTGRES_PORT` | PostgreSQL port | `5432` |
+| `REDIS_URL` | Redis cache URL | `redis://redis:6379/0` |
+| `CELERY_BROKER_URL` | Celery broker URL | `redis://redis:6379/0` |
+| `CELERY_RESULT_BACKEND` | Celery result backend URL | `redis://redis:6379/1` |
 | `STRIPE_SECRET_KEY` | Stripe secret API key | `sk_test_...` |
-| `STRIPE_PUBLIC_KEY` | Stripe public API key | `pk_test_...` |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret | `whsec_...` |
+| `EMAIL_HOST` | SMTP host; console backend is the default | `localhost` |
+| `EMAIL_PORT` | SMTP port | `1025` |
+| `EMAIL_HOST_USER` | SMTP username | `` |
+| `EMAIL_HOST_PASSWORD` | SMTP password | `` |
 | `ALLOWED_HOSTS` | Comma-separated allowed hosts | `localhost,127.0.0.1` |
 
 Example `.env`:
@@ -242,10 +294,20 @@ Example `.env`:
 ```env
 SECRET_KEY=your-django-secret-key
 DEBUG=True
-DATABASE_URL=postgres://user:password@localhost:5432/ecommerce
+POSTGRES_DB=ecommerce
+POSTGRES_USER=ecommerce
+POSTGRES_PASSWORD=change-me-locally
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+REDIS_URL=redis://redis:6379/0
+CELERY_BROKER_URL=redis://redis:6379/0
+CELERY_RESULT_BACKEND=redis://redis:6379/1
 STRIPE_SECRET_KEY=sk_test_your_secret_key
-STRIPE_PUBLIC_KEY=pk_test_your_public_key
 STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
+EMAIL_HOST=localhost
+EMAIL_PORT=1025
+EMAIL_HOST_USER=
+EMAIL_HOST_PASSWORD=
 ALLOWED_HOSTS=localhost,127.0.0.1
 ```
 
@@ -257,6 +319,10 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 | `GET` | `/products/<slug>` | Retrieve a single product by slug |
 | `GET` | `/category_list` | List all categories |
 | `GET` | `/category/<slug>/` | Retrieve category details with products |
+| `GET` | `/api/health/` | Return application health |
+| `POST` | `/api/auth/token/` | Obtain JWT access and refresh tokens |
+| `POST` | `/api/auth/token/refresh/` | Refresh a JWT access token |
+| `POST` | `/api/auth/token/verify/` | Verify a JWT access token |
 | `POST` | `/add_to_cart/` | Create or update a cart with a product |
 | `PUT` | `/update_cartitem_quantity/` | Update cart item quantity |
 | `DELETE` | `/delete_cartitem/<int:pk>/` | Delete a cart item |
@@ -271,7 +337,7 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 
 ## Authentication
 
-This project is designed around a custom user model and a JWT-friendly API architecture. In a JWT-based flow, the client authenticates once, receives an access token, and sends that token with each protected request.
+Protected cart, review, wishlist, checkout, and order operations use Django REST Framework Simple JWT. Users may access only their own private resources. Staff administrators continue to use Django admin for product, category, and order management.
 
 Sample Authorization header:
 
@@ -281,11 +347,26 @@ Authorization: Bearer <your_access_token>
 
 Typical JWT usage looks like this:
 
-1. The user logs in with valid credentials.
-2. The server returns an access token and, optionally, a refresh token.
+1. The user posts credentials to `/api/auth/token/`.
+2. The server returns an access token and a refresh token.
 3. The client stores the tokens securely.
 4. Subsequent API requests include the bearer token in the `Authorization` header.
 5. The backend verifies the token before allowing protected operations.
+
+```http
+POST /api/auth/token/
+Content-Type: application/json
+
+{"username": "customer", "password": "your-password"}
+```
+
+Send the returned access token with `Authorization: Bearer <access_token>`.
+
+## Caching and Background Jobs
+
+Public product and category list/detail responses use Redis with a 5-minute TTL. Catalog writes invalidate related public keys. Cart, order, wishlist, and profile data is user-specific and is not shared through the public cache.
+
+Celery uses Redis as its broker and result backend. Paid orders queue a confirmation email task after Stripe fulfillment. Celery Beat schedules conservative cleanup of old empty carts; it does not delete carts containing customer items or order data.
 
 ## Stripe Integration
 
@@ -382,21 +463,20 @@ Add your project screenshots here to make the README feel complete and recruiter
 
 </details>
 
-## Deployment
+## Local Docker Setup
 
-For production, the typical deployment shape is:
+Docker Compose provides these local services:
 
-- **Gunicorn** as the Python application server
-- **Nginx** as the reverse proxy and static/media front door
-- **PostgreSQL** as the production database
-- **Environment variables** for secrets, database connection details, and Stripe credentials
+| Service | Purpose |
+| --- | --- |
+| `django` | Runs `python manage.py runserver 0.0.0.0:8000` |
+| `postgres` | PostgreSQL database |
+| `redis` | Cache and Celery broker/backend |
+| `celery_worker` | Executes asynchronous tasks |
+| `celery_beat` | Schedules periodic Celery tasks |
+| `nginx` | Local reverse proxy at `http://localhost/` |
 
-<details>
-<summary>Production notes</summary>
-
-In a hardened setup, collect static assets, serve media safely, and place the app behind Nginx with Gunicorn bound to a Unix socket or local TCP port. If you add asynchronous jobs later, Redis and Celery fit naturally for email delivery, caching, background sync, and long-running tasks.
-
-</details>
+Containers communicate through Compose service names: Django uses `postgres` and `redis`, Celery uses `redis`, and Nginx proxies to `django:8000`. This stack is for local development/testing only and does not include deployment infrastructure.
 
 ## Future Improvements
 
@@ -404,7 +484,7 @@ In a hardened setup, collect static assets, serve media safely, and place the ap
 - Coupon and discount engine
 - Inventory tracking and stock reservation
 - Email notifications for orders and account events
-- Docker-based local and production environments
+- Docker-based local development environment
 - Redis caching for hot catalog reads
 - Celery for background jobs and webhook follow-up work
 - Search indexing with Elasticsearch
