@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+__pycache__/
+*.py[cod]
+*.sqlite3
+media/
+staticfiles/
+ecom-Virt-Env/
+ecommerceEnv/
